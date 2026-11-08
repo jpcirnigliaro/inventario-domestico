@@ -56,6 +56,7 @@
     <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="productDialogTitle">
       <div class="dialog-head"><h2 id="productDialogTitle">Agregar producto</h2><button class="icon-button" id="closeProduct" type="button" aria-label="Cerrar">✕</button></div>
       <div class="source-strip" id="productSource">Cargá los datos del producto.</div>
+      <a id="searchBarcodeWeb" class="btn soft" href="#" target="_blank" rel="noopener noreferrer" hidden style="margin:0 0 14px">Buscar el código en Internet</a>
       <form id="productForm">
         <div class="field"><label for="productName">Nombre del producto *</label><input class="text-input" id="productName" autocomplete="off" required placeholder="Ej.: Zanahorias, arroz, pollo…"></div>
         <div class="field-grid"><div class="field"><label for="productQty">Cantidad *</label><input class="text-input" id="productQty" type="text" inputmode="decimal" autocomplete="off" required value="1"></div><div class="field"><label for="productUnit">Unidad</label><select id="productUnit"><option value="unidades">Unidades</option><option value="paquetes">Paquetes</option><option value="kg">Kilogramos (kg)</option><option value="g">Gramos (g)</option><option value="l">Litros (l)</option><option value="ml">Mililitros (ml)</option><option value="bolsas">Bolsas</option><option value="botellas">Botellas</option><option value="latas">Latas</option><option value="docenas">Docenas</option></select></div></div>
@@ -90,10 +91,97 @@
   function closeForm(){$('productModal').hidden=true;}
   function preset(which){const presets={verduras:{nombre:'',categoria:'Frutas y verduras',unidad:'kg',ubicacion:'Heladera'},frutas:{nombre:'',categoria:'Frutas y verduras',unidad:'kg',ubicacion:'Heladera'},carne:{nombre:'Carne',categoria:'Carnes y pollo',unidad:'kg',ubicacion:'Freezer'},pollo:{nombre:'Pollo',categoria:'Carnes y pollo',unidad:'kg',ubicacion:'Freezer'}};openForm(presets[which]||{},'new','Producto fresco: podés registrar peso o unidades.');}
   function validateQty(raw){const v=Number(String(raw).replace(',','.').trim());return Number.isFinite(v)&&v>=0?Math.round(v*1000)/1000:null;}
-  function saveProduct(e){e.preventDefault();const nombre=$('productName').value.trim();const qty=validateQty($('productQty').value);if(!nombre||qty===null){toast('Revisá el nombre y la cantidad. Podés usar 1,5 o 1.5.','error');return;}const codigo=$('productBarcode').value.trim().replace(/\s/g,'');if(codigo && !/^\d{8,14}$/.test(codigo)){toast('El código debe tener entre 8 y 14 dígitos.','error');return;}const record={nombre,cantidad:qty,unidad:$('productUnit').value,categoria:$('productCat').value,ubicacion:$('productPlace').value,marca:$('productBrand').value.trim(),codigo,presentacion:$('productPresentation').value.trim(),updatedAt:new Date().toISOString()};let existing=state.items.find(i=>i.id===editId);if(formMode==='add'&&existing){if(existing.unidad!==record.unidad){toast('Para sumar, usá la misma unidad del producto existente.','error');return;}Object.assign(existing,record,{cantidad:Math.round((Number(existing.cantidad)+qty)*1000)/1000});}else if(formMode==='edit'&&existing){const collision=codigo&&state.items.some(i=>i.id!==editId&&i.codigo===codigo);if(collision){toast('Ya existe otro producto con ese código.','error');return;}Object.assign(existing,record);}else{const duplicated=codigo&&state.items.find(i=>i.codigo===codigo);if(duplicated){toast('Este código ya está cargado. Abrí su ficha para sumar stock.','error');return;}state.items.unshift({...record,id:uuid(),source:codigo?(state.catalog[codigo]?.source||'Manual'):'Manual'});}if(codigo&&!state.catalog[codigo])state.catalog[codigo]={codigo,nombre,marca:record.marca,presentacion:record.presentacion,categoria:record.categoria,source:'Manual'};save();closeForm();render();toast(formMode==='add'?'Stock actualizado':'Producto guardado');}
+  function saveProduct(e){e.preventDefault();const nombre=$('productName').value.trim();const qty=validateQty($('productQty').value);if(!nombre||qty===null){toast('Revisá el nombre y la cantidad. Podés usar 1,5 o 1.5.','error');return;}const codigo=$('productBarcode').value.trim().replace(/\s/g,'');if(codigo && !/^\d{8,14}$/.test(codigo)){toast('El código debe tener entre 8 y 14 dígitos.','error');return;}const record={nombre,cantidad:qty,unidad:$('productUnit').value,categoria:$('productCat').value,ubicacion:$('productPlace').value,marca:$('productBrand').value.trim(),codigo,presentacion:$('productPresentation').value.trim(),updatedAt:new Date().toISOString()};let existing=state.items.find(i=>i.id===editId);if(formMode==='add'&&existing){if(existing.unidad!==record.unidad){toast('Para sumar, usá la misma unidad del producto existente.','error');return;}Object.assign(existing,record,{cantidad:Math.round((Number(existing.cantidad)+qty)*1000)/1000});}else if(formMode==='edit'&&existing){const collision=codigo&&state.items.some(i=>i.id!==editId&&i.codigo===codigo);if(collision){toast('Ya existe otro producto con ese código.','error');return;}Object.assign(existing,record);}else{const duplicated=codigo&&state.items.find(i=>i.codigo===codigo);if(duplicated){toast('Este código ya está cargado. Abrí su ficha para sumar stock.','error');return;}state.items.unshift({...record,id:uuid(),source:codigo?(state.catalog[codigo]?.source||'Manual'):'Manual'});}if(codigo){const prior=state.catalog[codigo];const corrected=prior&&(prior.nombre!==record.nombre||prior.marca!==record.marca||prior.presentacion!==record.presentacion||prior.categoria!==record.categoria);const source=corrected?'Manual (corregido)':(prior?.source||'Manual');state.catalog[codigo]={codigo,nombre:record.nombre,marca:record.marca,presentacion:record.presentacion,categoria:record.categoria,source};if(existing)existing.source=source;}save();closeForm();render();toast(formMode==='add'?'Stock actualizado':'Producto guardado');}
   function editProduct(id){const i=state.items.find(p=>p.id===id);if(i)openForm(i,'edit','Podés editar nombre, cantidad, categoría y ubicación.');}
   function deleteProduct(id){const i=state.items.find(p=>p.id===id);if(!i)return;if(!confirm('¿Eliminar "'+i.nombre+'" del inventario?'))return;state.items=state.items.filter(p=>p.id!==id);save();render();toast('Producto eliminado');}
-  async function lookupBarcode(raw){const codigo=String(raw||'').replace(/\D/g,'');if(!/^\d{8,14}$/.test(codigo)){toast('Ingresá un código de barras de 8 a 14 dígitos.','error');return;}const existing=state.items.find(p=>p.codigo===codigo);if(existing){openForm(existing,'add','Código ya registrado. Sumá las unidades que acabás de encontrar.');return;}const cached=state.catalog[codigo];if(cached){openForm({...cached,codigo,cantidad:1,unidad:'unidades',ubicacion:'Alacena'},'new','Producto reconocido en el catálogo local.');return;}openForm({codigo,nombre:'',cantidad:1,unidad:'unidades',categoria:'Alimentos',ubicacion:'Alacena'},'new','Consultando catálogo gratuito… Si no aparece, completá el nombre.');const now=Date.now();lookups=lookups.filter(t=>now-t<60000);if(lookups.length>=12){$('productSource').textContent='Límite de consultas rápidas alcanzado. Podés completar el nombre manualmente.';$('productSource').classList.add('missing');return;}lookups.push(now);const token=codigo;let data;try{const url=`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json?product_type=all&fields=code,product_name,product_name_es,brands,quantity,image_front_small_url,product_type`;const ctl=new AbortController();const timeout=setTimeout(()=>ctl.abort(),8500);try{const resp=await fetch(url,{signal:ctl.signal,headers:{Accept:'application/json'}});if(!resp.ok)throw new Error('HTTP '+resp.status);data=await resp.json();}finally{clearTimeout(timeout);}}catch(err){if($('productBarcode').value===token&&!$('productModal').hidden){$('productSource').textContent='No pudimos consultar la base gratuita ahora. Cargá el nombre manualmente.';$('productSource').classList.add('missing');}return;}if($('productModal').hidden||$('productBarcode').value!==token)return;const p=data?.product;if(data?.status===1&&p&&(p.product_name_es||p.product_name||p.brands)){const normalized={codigo,nombre:p.product_name_es||p.product_name||p.brands||'',marca:p.brands||'',presentacion:p.quantity||'',categoria:catFromSource(p,data),source:'Open Food Facts'};state.catalog[codigo]=normalized;save();if(!$('productName').value.trim())$('productName').value=normalized.nombre;if(!$('productBrand').value.trim())$('productBrand').value=normalized.marca;if(!$('productPresentation').value.trim())$('productPresentation').value=normalized.presentacion;$('productCat').value=normalized.categoria;$('productSource').textContent='Producto encontrado en Open Food Facts. Revisá los datos antes de guardarlo.';$('productSource').classList.remove('missing');}else{$('productSource').textContent='El código no aparece en esta base gratuita. Escribí el nombre una vez y lo recordaremos localmente.';$('productSource').classList.add('missing');}}
+  function showSearchLink(codigo, visible) {
+    const link = $('searchBarcodeWeb');
+    link.hidden = !visible || !codigo;
+    if (!link.hidden) link.href = 'https://www.google.com/search?q=' + encodeURIComponent('"' + codigo + '" producto codigo de barras Argentina');
+  }
+  async function lookupBarcode(raw) {
+    const codigo = String(raw || '').replace(/\D/g, '');
+    if (!/^\d{8,14}$/.test(codigo)) {
+      toast('Ingresá un código de barras de 8 a 14 dígitos.', 'error');
+      return;
+    }
+    const existing = state.items.find(p => p.codigo === codigo);
+    if (existing) {
+      openForm(existing, 'add', 'Código ya registrado. Sumá las unidades que acabás de encontrar.');
+      showSearchLink(codigo, false);
+      return;
+    }
+    const cached = state.catalog[codigo];
+    if (cached && cached.nombre) {
+      openForm({...cached, codigo, cantidad: 1, unidad: 'unidades', ubicacion: 'Alacena'}, 'new', 'Producto reconocido en tu catálogo local, sin consultas externas.');
+      showSearchLink(codigo, false);
+      return;
+    }
+    openForm({codigo, nombre: '', cantidad: 1, unidad: 'unidades', categoria: 'Alimentos', ubicacion: 'Alacena'}, 'new', 'Buscando el producto en las bases gratuitas...');
+    showSearchLink(codigo, false);
+    const alive = () => !$('productModal').hidden && $('productBarcode').value === codigo;
+    const info = (message, missing) => {
+      if (!alive()) return;
+      $('productSource').textContent = message;
+      $('productSource').classList.toggle('missing', missing);
+      showSearchLink(codigo, missing);
+    };
+    const now = Date.now();
+    lookups = lookups.filter(t => now - t < 60000);
+    if (lookups.length >= 12) {
+      info('Límite de consultas gratuitas por minuto. Podés guardar el código y escribir el nombre.', true);
+      return;
+    }
+    lookups.push(now);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let data, response;
+    try {
+      const params = new URLSearchParams({
+        product_type: 'all', cc: 'ar', lc: 'es',
+        fields: 'code,product_name,product_name_es,abbreviated_product_name,abbreviated_product_name_es,brands,quantity,product_type'
+      });
+      response = await fetch('https://world.openfoodfacts.org/api/v3/product/' + encodeURIComponent(codigo) + '?' + params.toString(), {
+        signal: controller.signal,
+        headers: {Accept: 'application/json'}
+      });
+      if (response.status === 404) {
+        info('No figura en las bases abiertas de alimentos, limpieza, higiene o mascotas. Escribí su nombre una vez y lo recordaremos.', true);
+        return;
+      }
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      data = await response.json();
+    } catch (error) {
+      info('La consulta gratuita no respondió. El código está capturado: escribí el nombre o buscá el producto.', true);
+      return;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!alive()) return;
+    const p = data?.product;
+    const nombre = [p?.product_name_es, p?.product_name, p?.abbreviated_product_name_es, p?.abbreviated_product_name]
+      .find(v => typeof v === 'string' && v.trim())?.trim() || '';
+    if (!p || !nombre) {
+      if (p?.brands && !$('productBrand').value.trim()) $('productBrand').value = p.brands;
+      info('Encontramos el código pero falta el nombre en la base. Completalo manualmente y lo recordaremos.', true);
+      return;
+    }
+    const hostType = String(response.url || '').toLowerCase();
+    const type = p.product_type || data.product_type ||
+      (hostType.includes('openpetfoodfacts') ? 'petfood' : hostType.includes('openbeautyfacts') ? 'beauty' : hostType.includes('openproductsfacts') ? 'product' : 'food');
+    const source = ({food:'Open Food Facts', petfood:'Open Pet Food Facts', beauty:'Open Beauty Facts', product:'Open Products Facts'})[type] || 'Open Facts';
+    const normalized = {
+      codigo, nombre, marca:p.brands || '', presentacion:p.quantity || '',
+      categoria:catFromSource({...p, product_type:type}, {product_type:type}), source
+    };
+    state.catalog[codigo] = normalized;
+    save();
+    if (!$('productName').value.trim()) $('productName').value = normalized.nombre;
+    if (!$('productBrand').value.trim()) $('productBrand').value = normalized.marca;
+    if (!$('productPresentation').value.trim()) $('productPresentation').value = normalized.presentacion;
+    $('productCat').value = normalized.categoria;
+    info('Producto encontrado en ' + source + '. Revisá su nombre y guardalo.', false);
+  }
   function downloadJSON(){const byCode={};const catalog={...state.catalog};state.items.forEach(p=>{const key=p.codigo||'manual-'+p.id;byCode[key]={codigo:p.codigo||key,nombre:p.nombre,marca:p.marca||'',presentacion:p.presentacion||'',categoria:p.categoria,cantidad:p.cantidad,unidad:p.unidad,ubicacion:p.ubicacion,stockMinimo:0,origen:p.source||'Manual'};});const output={app:'Mi Casa - Inventario Domestico',schemaVersion:1,createdAt:new Date().toISOString(),items:state.items,catalog:state.catalog,catalogo:catalog,inventario:byCode,notice:'Copia local de inventario; no es una sincronizacion con Firebase. Los datos de Open Food Facts se distribuyen bajo ODbL.'};const blob=new Blob([JSON.stringify(output,null,2)],{type:'application/json;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='inventario-casa-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);state.lastBackup=new Date().toISOString();save();render();toast('Archivo JSON generado. Guardalo en Archivos o Descargas.');}
   function normalizeImport(data){let source;if(Array.isArray(data.items))source=data.items;else if(data.inventario&&typeof data.inventario==='object')source=Object.values(data.inventario);else throw new Error('El JSON no contiene items ni inventario.');if(source.length>10000)throw new Error('Archivo demasiado grande.');const result=[];const codes=new Set();for(const obj of source){if(!obj||typeof obj!=='object')continue;const nombre=String(obj.nombre||obj.name||'').slice(0,250).trim(),codigo=String(obj.codigo||'').trim();const qty=Number(obj.cantidad);if(!nombre||!Number.isFinite(qty)||qty<0)continue;if(codigo&&codes.has(codigo))continue;if(codigo)codes.add(codigo);result.push({id:uuid(),nombre,cantidad:qty,unidad:String(obj.unidad||'unidades').slice(0,30),categoria:CATS.includes(obj.categoria)?obj.categoria:'Otros',ubicacion:String(obj.ubicacion||'Alacena').slice(0,80),marca:String(obj.marca||'').slice(0,120),codigo:/^\d{8,14}$/.test(codigo)?codigo:'',presentacion:String(obj.presentacion||'').slice(0,100),source:String(obj.source||obj.origen||'Manual').slice(0,80),updatedAt:new Date().toISOString()});}return result;}
   async function importJSON(file){if(!file)return;try{const content=await file.text();if(content.length>5000000)throw new Error('Archivo demasiado grande.');const data=JSON.parse(content);const incoming=normalizeImport(data);if(!incoming.length)throw new Error('No encontramos productos válidos en ese JSON.');if(!confirm(`Importar ${incoming.length} productos? Esto reemplazará los ${state.items.length} productos actuales de ESTE navegador.`))return;state={items:incoming,catalog:data.catalog||data.catalogo||{},lastBackup:null};save();render();toast(`${incoming.length} productos importados`);}catch(err){toast(err.message||'No se pudo importar el JSON.','error');}finally{$('importFile').value='';}}
